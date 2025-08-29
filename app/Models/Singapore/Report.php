@@ -13,8 +13,4 @@ class Report extends Model
         'company_id', 'name', 'type', 'price'
     ];
 
-    public function company()
-    {
-        return $this->belongsTo(Company::class, 'company_id');
-    }
 }

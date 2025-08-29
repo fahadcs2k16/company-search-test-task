@@ -8,6 +8,7 @@ use App\Models\Singapore\Company as SingaporeCompany;
 use App\Models\Mexico\Company as MexicoCompany;
 use App\Models\Philippines\Company as PhilippinesCompany;
 use App\Models\Malaysia\Company as MalaysiaCompany;
+use App\Models\Singapore\Report as SingaporeReport;
 use Illuminate\Support\Collection;
 
 class CompanySearchService extends Controller
@@ -35,12 +36,13 @@ class CompanySearchService extends Controller
         return view('companies.show', compact('companyDetails'));
     }
 
-    public function searchAcrossCountries(string $searchTerm): Collection
+    public function searchAcrossCountries(string $searchTerm, int $limit = 10): Collection
     {
         $results = collect();
 
         // Search Singapore
         $sgCompanies = SingaporeCompany::where('name', 'like', "%{$searchTerm}%")
+            ->limit($limit)
             ->get()
             ->map(function ($company) {
                 return [
@@ -57,6 +59,7 @@ class CompanySearchService extends Controller
         // Search Mexico
         $mxCompanies = MexicoCompany::where('name', 'like', "%{$searchTerm}%")
             ->with('state')
+            ->limit($limit)
             ->get()
             ->map(function ($company) {
                 return [
@@ -73,6 +76,7 @@ class CompanySearchService extends Controller
 
         // Search Philippines
         $phCompanies = PhilippinesCompany::where('name', 'like', "%{$searchTerm}%")
+            ->limit($limit)
             ->get()
             ->map(function ($company) {
                 return [
@@ -89,6 +93,7 @@ class CompanySearchService extends Controller
         // Search Malaysia
         $myCompanies = MalaysiaCompany::where('name', 'like', "%{$searchTerm}%")
             ->with('companyType')
+            ->limit($limit)
             ->get()
             ->map(function ($company) {
                 return [
@@ -127,8 +132,8 @@ class CompanySearchService extends Controller
 
     private function getSingaporeCompanyDetails(int $companyId): ?array
     {
-        $company = SingaporeCompany::with('reports')->find($companyId);
-        
+        $company = SingaporeCompany::find($companyId);
+        $reports = SingaporeReport::all();
         if (!$company) return null;
 
         return [
@@ -141,12 +146,12 @@ class CompanySearchService extends Controller
                 'country' => 'Singapore',
                 'country_code' => 'SG'
             ],
-            'reports' => $company->reports->map(function ($report) {
+            'reports' => $reports->map(function ($report) {
                 return [
                     'id' => $report->id,
                     'name' => $report->name,
                     'type' => $report->type,
-                    'price' => $report->price,
+                    'price' => $report->amount,
                     'country_code' => 'SG'
                 ];
             })
@@ -184,46 +189,54 @@ class CompanySearchService extends Controller
 
     private function getPhilippinesCompanyDetails(int $companyId): ?array
     {
-        $company = PhilippinesCompany::with(['reports.reportPrice'])->find($companyId);
-        echo "<pre>";
-        print_r($company);
-        echo "</pre>";
+        $company = \App\Models\Philippines\Company::with([
+            'reports.reportPrice.reportType'
+        ])->find($companyId);
 
-        exit;
-        // Group reports by type
-        $groupedReports = $company->reports->groupBy('report_type_id');
-        
+        if (!$company) {
+            return null;
+        }
+
+        // Group reports by report_type_id (via reportPrice.reportType)
+        $groupedReports = $company->reports->groupBy(function ($report) {
+            return optional($report->reportPrice->reportType)->id;
+        });
+
         $reports = collect();
+
         foreach ($groupedReports as $typeId => $typeReports) {
-            $reportType = $typeReports->first()->reportType;
-            $periods = $typeReports->pluck('period_date')->map(function ($date) {
-                return $date;
-            }); 
-            if($reportType) {
+            $reportType = $typeReports->first()->reportPrice->reportType;
+
+            if ($reportType) {
+                $periods = $typeReports->pluck('period_date')->map(function ($date) {
+                    return optional($date)->format('Y-m-d');
+                });
+
                 $reports->push([
-                    'id' => $reportType->id,
-                    'name' => $reportType->name,
-                    'type' => $reportType->name,
-                    'price' => $reportType->price,
-                    'periods' => $periods,
-                    'country_code' => 'PH'
+                    'id'           => $reportType->id,
+                    'name'         => $reportType->name,
+                    'type'         => $reportType->name,
+                    'price'        => $reportType->price, // shared across periods
+                    'periods'      => $periods,
+                    'country_code' => 'PH',
                 ]);
             }
         }
 
         return [
             'company' => [
-                'id' => $company->id,
-                'name' => $company->name,
-                'slug' => $company->slug,
-                'identifier' => $company->sec_code,
-                'address' => $company->address,
-                'country' => 'Philippines',
-                'country_code' => 'PH'
+                'id'           => $company->id,
+                'name'         => $company->name,
+                'slug'         => $company->slug,
+                'identifier'   => $company->sec_code,
+                'address'      => $company->address,
+                'country'      => 'Philippines',
+                'country_code' => 'PH',
             ],
             'reports' => $reports
         ];
     }
+
 
     private function getMalaysiaCompanyDetails(int $companyId): ?array
     {

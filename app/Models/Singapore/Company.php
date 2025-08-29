@@ -15,6 +15,6 @@ class Company extends Model
 
     public function reports()
     {
-        return $this->hasMany(Report::class, 'company_id');
+        return $this->hasMany(Report::class);
     }
 }

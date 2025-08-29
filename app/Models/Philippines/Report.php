@@ -8,9 +8,9 @@ class Report extends Model
 {
     protected $connection = 'companies_house_ph';
     protected $table = 'reports';
-    
+
     protected $fillable = [
-        'company_id', 'report_type_id', 'period_date'
+        'company_id', 'report_price_id', 'period_date'
     ];
 
     protected $casts = [
@@ -22,13 +22,21 @@ class Report extends Model
         return $this->belongsTo(Company::class, 'company_id');
     }
 
-    public function reportType()
-    {
-        return $this->belongsTo(ReportType::class, 'report_type_id');
-    }
-
     public function reportPrice()
     {
         return $this->belongsTo(ReportPrice::class, 'report_price_id');
+    }
+
+    // Shortcut: through reportPrice → reportType
+    public function reportType()
+    {
+        return $this->hasOneThrough(
+            ReportType::class,
+            ReportPrice::class,
+            'id',              // report_prices.id
+            'id',              // report_types.id
+            'report_price_id', // reports.report_price_id
+            'report_type_id'   // report_prices.report_type_id
+        );
     }
 }
